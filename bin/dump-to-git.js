@@ -1,21 +1,18 @@
-'use strict';
-
 var fs = require('fs');
 var process = require('process');
 var child_process = require('child_process');
 var Promise = require('bluebird');
 var NodeGit = require('nodegit');
-var LZString = require('lz-string');
 var models = require("../lib/models");
 var config = require('../config.json').dumpToGit;
 
 var repoRootDir = config.targetDirectory;
 
 try {
-	process.chdir(repoRootDir);
+  process.chdir(repoRootDir);
 } catch (e) {
-	console.error("The target directory for your notes does not exist, please create %s", repoRootDir);
-	process.exit(1);
+  console.error("The target directory for your notes does not exist, please create %s", repoRootDir);
+  process.exit(1);
 }
 
 
@@ -25,14 +22,18 @@ function exportNotes() {
   .then(function (notes) {
     // Iterate over all notes
     return Promise.all(notes.map(function (note) {
-      var fileName = LZString.decompressFromBase64(note.title) + " - " + LZString.compressToBase64(note.id) + ".md";
+      if (note.content.length < 1) {
+        console.log('Skipping empty note ' + note.id);
+        return Promise.resolve();
+      }
+      var fileName = note.title + " - " + note.id + ".md";
       fileName = fileName.replace('/', '_');
+
 
       // Export note to file
       return new Promise(function (resolve) {
         console.log('Exporting ' + note.id + ' to ' + fileName);
-        var body = LZString.decompressFromBase64(note.content);
-        fs.writeFile(fileName, body, resolve);
+        fs.writeFile(fileName, note.content, resolve);
       })
       .then(function () {
         return fileName;
@@ -78,13 +79,14 @@ function commit(repo, tree) {
 }
 
 
-
 NodeGit.Repository
 .open('.')
 .then(function (repo) {
 
   return exportNotes()
   .then(function(files) {
+
+    files = files.filter(function (value) {return !!value;});
 
     return getHeadCommit(repo)
     .then(function (head) {
